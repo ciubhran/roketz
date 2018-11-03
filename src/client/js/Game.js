@@ -39,13 +39,6 @@ class Game extends React.Component {
     }
 
     preloadAssets() {
-        var loc = window.location.pathname;
-        var dir = loc.substring(0, loc.lastIndexOf('/'));
-
-        console.log(new Date());
-        console.log(this);
-        console.log(dir);
-
         this.load.image('space', 'assets/galaxies/space.png');
         this.load.image('bullet', 'assets/projectiles/bullet.png');
         this.load.image('ship', 'assets/ships/ship64.png');
@@ -65,20 +58,18 @@ class Game extends React.Component {
                 this.setBlendMode(1);
                 this.setDepth(1);
 
-                this.lifespan = 1000;
-                this.bulletSpeed = 400;
-
                 this._temp = new Phaser.Math.Vector2();
             },
 
             fire: function(ship, scale) {
                 this.lifespan = 1000;
+                this.bulletSpeed = 400;
 
                 this.setPosition(ship.x, ship.y);
                 this.body.reset(ship.x, ship.y);
                 this.scaleX = scale;
                 this.scaleY = scale;
-                this.setAngle(ship.body.rotation);
+                this.setAngle(ship.rotation);
 
                 this.setActive(true);
                 this.setVisible(true);
@@ -108,36 +99,40 @@ class Game extends React.Component {
             runChildUpdate: true
         });
 
-        //  Our player ship
         this.ship = this.physics.add.image(this.game.config.width / 2, this.game.config.height / 2, 'ship').setDepth(2);
 
-        this.ship.setDrag(300);
-        this.ship.setAngularDrag(400);
-        this.ship.setMaxVelocity(600);
+        // Ship variables
+        this.lastShot = 0;              // Used to monitor weapon cooldown.
+        this.shipSpeed = 300;           // The default ship speed.
+
+        this.shipDrag = 50;             // A force that slows down the velocity of the object.
+        this.shipAngularDrag = 30;      // A force that slows down the rotation of the object.
+        this.shipMaxVelocity = 200;     // The maximum velocity of the ship. Duh.
+
+        this.ship.setDrag(this.shipDrag);
+        this.ship.setAngularDrag(this.shipAngularDrag);
+        this.ship.setMaxVelocity(this.shipMaxVelocity);
 
         //  Game input
         this.cursors = this.input.keyboard.createCursorKeys();
 
         this.fire = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
-        this.shipSpeed = Phaser.Math.GetSpeed(300, 1);
-
-        this.lastShot = 0;
-
+        this.warp = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+        
         this.cameras.main.startFollow(this.ship);
     }
 
     updateGame(time, delta) {
         if (this.cursors.left.isDown) {
-            this.ship.setAngularVelocity(-150);
+            this.ship.setAngularVelocity(-this.shipMaxVelocity / 2);
         } else if (this.cursors.right.isDown) {
-            this.ship.setAngularVelocity(150);
+            this.ship.setAngularVelocity(this.shipMaxVelocity / 2);
         } else {
             this.ship.setAngularVelocity(0);
         }
 
         if (this.cursors.up.isDown) {
-            this.physics.velocityFromRotation(this.ship.rotation, 600, this.ship.body.acceleration);
+            this.physics.velocityFromRotation(this.ship.rotation, this.shipSpeed, this.ship.body.acceleration);
         } else {
             this.ship.setAcceleration(0);
         }
@@ -185,18 +180,46 @@ class Game extends React.Component {
             }
         }
 
-        this.space.tilePositionX += this.ship.body.deltaX() * 0.5;
-        this.space.tilePositionY += this.ship.body.deltaY() * 0.5;
+        /* warping */
+        this.getNewCoordinates = (ship, warpPower) => {
+            let x = Math.cos(ship.rotation) * warpPower;
+            let y = Math.sin(ship.rotation) * warpPower;
 
-        /*
-        if (this.game.input.keyboard.isDown(Phaser.Keyboard.SPACEBAR)) {
-            this.fireBullet();
+            return {x, y};
+        };
+
+        this.engageWarp = (warpPower, delta) => {
+            if (this.shipTween) {
+                this.shipTween.stop();
+            }
+
+            const coords = this.getNewCoordinates(this.ship, warpPower);
+            const tweenDuration = Math.sqrt(Math.pow(warpPower, 2)) / this.shipSpeed * 1000;
+
+            this.shipTween = this.tweens.add({
+                targets: this.ship,
+                x: this.ship.body.x + coords.x,
+                y: this.ship.body.y + coords.y,
+                duration: tweenDuration
+            });
+        };
+
+        if (this.warpIsDown && this.warp.isUp && this.warpPower > 50) {
+            this.warpIsDown = false;
+            this.engageWarp(this.warpPower, delta);
+            this.warpPower = 0;
+        } else if (!this.warpIsDown && this.warp.isDown) {
+            this.warpPower = 0;
+            this.warpIsDown = true;
+        } else if(this.warp.isUp) {
+            this.warpPower = 0;
+            this.warpIsDown = false;
+        } else if (this.warpIsDown) {
+            this.warpPower += delta;
         }
 
-        this.screenWrap(this.ship);
-
-        this.bullets.forEachExists(this.screenWrap, this);
-        */
+        this.space.tilePositionX += this.ship.body.deltaX() * 0.5;
+        this.space.tilePositionY += this.ship.body.deltaY() * 0.5;
     }
 
     render() {
