@@ -1,5 +1,9 @@
 import React from 'react';
 import Phaser from 'phaser';
+import GameUtils from './GameUtils.js';
+import Projectile from './Projectile.js';
+
+let Utils = new GameUtils();
 
 class Game extends React.Component {
     constructor(props) {
@@ -41,104 +45,76 @@ class Game extends React.Component {
     }
 
     preloadAssets() {
+        this.loadComplete = false;
+
+        let progressBar = this.add.graphics(),
+            progressBox = this.add.graphics();
+
+        progressBox.fillStyle(0x222222, 0.8);
+        progressBox.fillRect(240, 270, 320, 50);
+
+        this.load.image('ship', 'assets/ships/ship64.png');
         this.load.image('space', 'assets/galaxies/space.png');
         this.load.image('bullet', 'assets/projectiles/bullet.png');
-        this.load.image('ship', 'assets/ships/ship64.png');
+        this.load.spritesheet('explosion', 'assets/explosions/1.png', {
+            frameWidth: 128, frameHeight: 128, endFrame: 16
+        });
+
         this.load.audio('battle', 'assets/audio/battle.mp3');
+
+        this.load.on('progress', (progress) => {
+            progressBar.clear();
+            progressBar.fillStyle(0xffffff, 1);
+            progressBar.fillRect(250, 280, 300 * progress, 30);
+        });
+
+        this.load.on('complete', () => {
+            progressBar.destroy();
+            progressBox.destroy();
+            this.loadComplete = true;
+
+            // Play background audio ... (Chrome will not start playing the sound until the user interacts with the canvas. Perhaps add a 'START' button after loading?)
+            this.music = this.sound.add('battle');
+            // this.music.play({ loop: true });
+        });
     }
 
     initGame() {
-        //  A spacey background
-        this.space = this.add.image(this.game.config.width / 2, this.game.config.height / 2, 'space');
+        this.space = this.add.image(this.game.config.width / 2, this.game.config.height / 2, 'space'); // Backgrounnd ...
+        this.weapons = Utils.getWeaponTypes(); // All data about weapon types ...
+        this.ships = Utils.getShipTypes(); // All data about ship types ...
+        this.text = this.add.text(this.game.config.width / 2, this.game.config.height / 2, "test", {fixedToCamera: true, font: "18px Arial", fill: '#ffffff'}); // Temporary UI text for active weapon ...
+        this.ship = this.physics.add.image(this.game.config.width / 2, this.game.config.height / 2, 'ship').setDepth(2); // The ship ...
 
-        this.cameraPos = {x: 0, y: 0};
-
-        this.music = this.sound.add('battle');
-        //this.music.play({ loop: true });
-
-        // Setup bullets
-        let Bullet = new Phaser.Class({
-            Extends: Phaser.GameObjects.Image,
-
-            initialize: function Bullet(scene) {
-                Phaser.GameObjects.Image.call(this, scene, 0, 0, 'bullet');
-
-                this.setBlendMode(1);
-                this.setDepth(1);
-
-                this._temp = new Phaser.Math.Vector2();
-            },
-
-            fire: function(ship, scale) {
-                this.lifespan = 1000;
-                this.bulletSpeed = 400;
-
-                this.setPosition(ship.x, ship.y);
-                this.body.reset(ship.x, ship.y);
-                this.scaleX = scale;
-                this.scaleY = scale;
-                this.setAngle(ship.rotation);
-
-                this.setActive(true);
-                this.setVisible(true);
-
-                let angle = Phaser.Math.DegToRad(ship.body.rotation);
-
-                this.scene.physics.velocityFromRotation(angle, this.bulletSpeed, this.body.velocity);
-
-                this.body.velocity.x *= 2;
-                this.body.velocity.y *= 2;
-            },
-
-            update: function(time, delta) {
-                this.lifespan -= delta;
-
-                if (this.lifespan <= 0) {
-                    this.setActive(false);
-                    this.setVisible(false);
-                    this.body.stop();
-                }
-            }
-        });
-
-        this.bullets = this.physics.add.group({
-            classType: Bullet,
+        // Physics group for projectiles ...
+        this.projectiles = this.physics.add.group({
+            classType: Projectile,
             maxSize: 1000,
             runChildUpdate: true
         });
 
-        this.ship = this.physics.add.image(this.game.config.width / 2, this.game.config.height / 2, 'ship').setDepth(2);
-
-        const ships = new Map();
-
-        // Slow ship
-        ships.set('FREIGHTER', {
-            drag: 50,
-            angularDrag: 30,
-            maxVelocity: 100,
-            speed: 50,
-            mass: 500
-        });
-
-        // Fast ship
-        ships.set('HALCYON', {
-            drag: 200,
-            angularDrag: 10,
-            maxVelocity: 300,
-            speed: 400,
-            mass: 50
+        // Explosion animation that we will use when smartbombs detonate ...
+        this.anims.create({
+            key: 'explosion',
+            frames: this.anims.generateFrameNumbers('explosion', {
+                start: 1,
+                end: 16
+            }),
+            repeat: 0,
+            frameRate: 15
         });
 
         // Current ship settings
-        const shipSettings = ships.get('HALCYON');
+        const shipSettings = this.ships.get(Utils.ShipTypes.HALCYON);
 
         // Ship variables
         this.lastShot = 0;                               // Used to monitor weapon cooldown.
         this.lastWarp = 0;                               // Used to monitor warp cooldown.
         this.shipSpeed = shipSettings.speed;             // The default ship speed.
 
+        this.shipWeaponType = shipSettings.weaponType;
         this.shipDrag = shipSettings.drag;               // A force that slows down the velocity of the object.
-        this.shipAngularDrag = shipSettings.angularDrag; // A force that slows down the rotation of the object.
+        this.shipAngularDrag = shipSettings.angularDrag; // A force that slows down the rotation of the object. Theory: Should probably be 0 to prevent rotational stop while still moving.
         this.shipMaxVelocity = shipSettings.maxVelocity; // The maximum velocity of the ship. Duh.
         this.shipMass = shipSettings.mass;               // The mass of the object. Affects velocity changes when bumping into other objects.
 
@@ -152,11 +128,17 @@ class Game extends React.Component {
 
         this.fire = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.warp = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+        this.switch = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
 
         this.cameras.main.startFollow(this.ship, false, 0.1, 0.1);
     }
 
     updateGame(time, delta) {
+        // If game has not finished loading, do not update anything ...
+        if (!this.loadComplete) {
+            return;
+        }
+
         if (this.cursors.left.isDown) {
             this.ship.setAngularVelocity(-this.shipMaxVelocity / 2);
         } else if (this.cursors.right.isDown) {
@@ -172,58 +154,87 @@ class Game extends React.Component {
             this.ship.setAccelerationY(0);
         }
 
-        let BULLET = 0x1;
-        let CHARGE = 0x2;
+        // Switch weapon type ...
+        if (!this.switchIsDown && this.switch.isDown) {
+            this.accumulatedCharge = 0;
+            this.switchIsDown = true;
+            this.shipWeaponType = (this.shipWeaponType === Utils.ProjectileTypes.BULLET) ?
+                Utils.ProjectileTypes.CHARGE : (this.shipWeaponType === Utils.ProjectileTypes.CHARGE) ?
+                Utils.ProjectileTypes.SMARTBOMB : Utils.ProjectileTypes.BULLET;
 
-        this.weaponType = BULLET;
+            console.log('weapon swapped to: ' + (this.shipWeaponType === Utils.ProjectileTypes.BULLET ? 'BULLET' :
+                    this.shipWeaponType === Utils.ProjectileTypes.CHARGE ? 'CHARGE' : 'SMARTBOMB'));
+
+        } else if(this.switch.isUp) {
+            this.switchIsDown = false;
+        }
+
+        /* smartbomb */
+        if (this.shipWeaponType === Utils.ProjectileTypes.SMARTBOMB && this.fire.isDown && time > this.lastShot) {
+            let bomb = this.projectiles.get(),
+                projectileSettings = this.weapons.get(this.shipWeaponType);
+
+            if (bomb) {
+                console.log('DROP!');
+                bomb.fire(this.ship, projectileSettings);
+
+                this.lastShot = time + projectileSettings.cooldown;
+            }
+        }
 
         /* bullet */
-        if (this.weaponType === BULLET && this.fire.isDown && time > this.lastShot) {
-            var bullet = this.bullets.get();
+        if (this.shipWeaponType === Utils.ProjectileTypes.BULLET && this.fire.isDown && time > this.lastShot) {
+            let bullet = this.projectiles.get(),
+                projectileSettings = this.weapons.get(this.shipWeaponType);
 
             if (bullet) {
                 console.log('PEW!');
-                bullet.fire(this.ship, 1);
+                bullet.fire(this.ship, projectileSettings);
 
-                this.lastShot = time + 50;
+                this.lastShot = time + projectileSettings.cooldown;
             }
         }
 
         /* charging */
         this.unleashCharge = (autoRelease) => {
-            var charge = this.bullets.get();
+            let charge = this.projectiles.get(),
+                projectileSettings = this.weapons.get(this.shipWeaponType);
 
             if (charge) {
                 console.log(autoRelease ? 'AUTOMATIC RELEASE OF CHARGE!' : 'MANUAL RELEASE OF CHARGE!');
-                charge.fire(this.ship, 1 + (this.accumulatedCharge / 500));
+
+                // Create a copy of the object before we modify it, so we don't change the default projectile settings ...
+                let modifiedProjectileSettings = Object.assign(projectileSettings, {scale: 1 + (this.accumulatedCharge / 500)});
+
+                charge.fire(this.ship, modifiedProjectileSettings);
             }
 
             this.accumulatedCharge = 0;
         };
 
-        if (this.weaponType === CHARGE && this.fire.isDown) {
-            if (this.accumulatedCharge < 1000) {
+        let chargeSettings = this.weapons.get(Utils.ProjectileTypes.CHARGE);
+
+        if (this.shipWeaponType === Utils.ProjectileTypes.CHARGE && this.fire.isDown && time > this.lastShot) {
+            if (this.accumulatedCharge < chargeSettings.maxCharge) {
                 this.accumulatedCharge += delta;
             } else {
+                this.lastShot = time + chargeSettings.cooldown;
                 this.unleashCharge(1);
             }
-        } else if(this.weaponType === CHARGE && this.fire.isUp) {
+        } else if(this.shipWeaponType === Utils.ProjectileTypes.CHARGE && this.fire.isUp) {
             if (this.accumulatedCharge > 0) {
+                this.lastShot = time + chargeSettings.cooldown;
                 this.unleashCharge(0);
-            } else {
-                this.accumulatedCharge = 0;
             }
         }
 
         /* warping */
         this.getNewCoordinates = (ship, warpPower) => {
-            let x = Math.cos(ship.rotation) * warpPower;
-            let y = Math.sin(ship.rotation) * warpPower;
+            let x = ship.body.x + Math.cos(ship.rotation) * warpPower;
+            let y = ship.body.y + Math.sin(ship.rotation) * warpPower;
 
             return {x, y};
         };
-
-        //  this.cameras.main.pan(x, y, fullDuration / maxRuns, 'Linear', true, (camera, progress, x, y) => {});
 
         this.engageWarp = (warpPower, instant = false) => {
             if (this.shipTween) {
@@ -231,7 +242,7 @@ class Game extends React.Component {
                 this.shipTween = null;
             }
 
-            const coords = this.getNewCoordinates(this.ship, warpPower);
+            const warpPosition = this.getNewCoordinates(this.ship, warpPower);
             const tweenDuration = Math.sqrt(Math.pow(warpPower, 2)) / this.shipSpeed * 1000;
 
             let shipRemnant = this.physics.add.staticSprite(this.ship.body.x, this.ship.body.y, 'ship');
@@ -250,8 +261,8 @@ class Game extends React.Component {
 
             this.shipTween = this.tweens.add({
                 targets: this.ship,
-                x: this.ship.body.x + coords.x,
-                y: this.ship.body.y + coords.y,
+                x: warpPosition.x,
+                y: warpPosition.y,
                 duration: instant ? 1 : tweenDuration
             });
         };
@@ -260,6 +271,13 @@ class Game extends React.Component {
             this.engageWarp(150, true);
             this.lastWarp = time + 1000;
         }
+
+        // Weapon text
+        this.text.x = this.cameras.main.midPoint.x - 350;
+        this.text.y = this.cameras.main.midPoint.y + 250;
+
+        this.text.setText('Weapon: ' + (this.shipWeaponType === Utils.ProjectileTypes.BULLET ? 'BULLET' :
+                this.shipWeaponType === Utils.ProjectileTypes.CHARGE ? 'CHARGE' : 'SMARTBOMB'));
 
         //this.space.tilePositionX += this.ship.body.deltaX() * 0.5;
         //this.space.tilePositionY += this.ship.body.deltaY() * 0.5;

@@ -10,3 +10,7 @@ With NPM:
 1. Use 'npm run dev' for development purposes (uses webpack-dev-server so no need to reload anything), and 'npm run prod' to create files required for production.
 2. Go to localhost:3000/dist/client/ (long URL) to test the app without a connection to the server (since it is not running).
 3. REACT: When running 'npm run dev', you only get the client (at the long URL), but the react-hot-loader will trigger and update.
+
+Deployment to DigitalOcean for external testing:
+
+1. Use 'npm run prod', not 'npm run dev'.
