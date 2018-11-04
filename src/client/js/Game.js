@@ -108,6 +108,7 @@ class Game extends React.Component {
         // Ship variables
         this.lastShot = 0;                               // Used to monitor weapon cooldown.
         this.lastWarp = 0;                               // Used to monitor warp cooldown.
+        this.turretRotation = 0;                   // Which out of two guns (0 and 1) to shoot from.
         this.shipSpeed = shipSettings.speed;             // The default ship speed.
 
         this.shipWeaponType = shipSettings.weaponType;
@@ -187,7 +188,12 @@ class Game extends React.Component {
 
             if (bullet) {
                 console.log('PEW!');
-                bullet.fire(this.ship, projectileSettings);
+
+                this.turretRotation = 1 - this.turretRotation;
+                
+                let modifiedProjectileSettings = Object.assign(projectileSettings, {turret: this.turretRotation });
+                
+                bullet.fire(this.ship, modifiedProjectileSettings);
 
                 this.lastShot = time + projectileSettings.cooldown;
             }

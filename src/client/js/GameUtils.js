@@ -46,8 +46,8 @@ export default class GameUtils {
             alpha: 1,
             lifespan: 1000,
             speed: 900,
-            scale: 0.25,
-            cooldown: 10,
+            scale: 0.4,
+            cooldown: 100,
             maxCharge: 0
         });
 
