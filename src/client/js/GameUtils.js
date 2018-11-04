@@ -12,6 +12,13 @@ export default class GameUtils {
         };
     }
 
+    getCoordinatesAfterAppliedForce(entity, force) {
+        return {
+            x: entity.x + (Math.cos(entity.rotation) * force),
+            y: entity.y + (Math.sin(entity.rotation) * force)
+        };
+    };
+
     getShipTypes() {
         let shipMap = new Map();
 

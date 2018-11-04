@@ -2,6 +2,7 @@ import React from 'react';
 import Phaser from 'phaser';
 import GameUtils from './GameUtils.js';
 import Projectile from './Projectile.js';
+import Explosion from './Explosion.js';
 
 let Utils = new GameUtils();
 
@@ -91,7 +92,13 @@ class Game extends React.Component {
             runChildUpdate: true
         });
 
-        // Explosion animation that we will use when smartbombs detonate ...
+        this.explosions = this.physics.add.group({
+            classType: Explosion,
+            maxSize: 1000,
+            runChildUpdate: true
+        });
+
+        // Explosion animation that we will use when bombs detonate ...
         this.anims.create({
             key: 'explosion',
             frames: this.anims.generateFrameNumbers('explosion', {
@@ -151,6 +158,11 @@ class Game extends React.Component {
         } else {
             this.ship.setAccelerationX(0);
             this.ship.setAccelerationY(0);
+        }
+
+        if (this.warp.isDown && time > this.lastWarp) {
+            this.engageWarp(150);
+            this.lastWarp = time + 1000;
         }
 
         // Switch weapon type ...
@@ -233,27 +245,15 @@ class Game extends React.Component {
         }
 
         /* warping */
-        this.getNewCoordinates = (ship, warpPower) => {
-            let x = ship.body.x + Math.cos(ship.rotation) * warpPower;
-            let y = ship.body.y + Math.sin(ship.rotation) * warpPower;
+        this.engageWarp = (warpPower) => {
+            const destination = Utils.getCoordinatesAfterAppliedForce(this.ship, warpPower);
+            //const tweenDuration = Math.sqrt(Math.pow(warpPower, 2)) / this.shipSpeed * 1000;
 
-            return {x, y};
-        };
-
-        this.engageWarp = (warpPower, instant = false) => {
-            if (this.shipTween) {
-                this.shipTween.stop();
-                this.shipTween = null;
-            }
-
-            const warpPosition = this.getNewCoordinates(this.ship, warpPower);
-            const tweenDuration = Math.sqrt(Math.pow(warpPower, 2)) / this.shipSpeed * 1000;
-
-            let shipRemnant = this.physics.add.staticSprite(this.ship.body.x, this.ship.body.y, 'ship');
+            // The fading illusion that remains after warping ...
+            let shipRemnant = this.physics.add.staticSprite(this.ship.x, this.ship.y, 'ship');
             shipRemnant.rotation = this.ship.rotation;
 
-            //this.ship.setVelocity(this.shipMaxVelocity);
-
+            // Tween for fading out ship remnant ...
             this.tweens.add({
                 targets: shipRemnant,
                 alpha: 0,
@@ -263,18 +263,21 @@ class Game extends React.Component {
                 }
             });
 
+            // IMPORTANT NOTE:
+            // ship.x and ship.y is NOT the same as ship.body.x and ship.body.y.
+            // 'body' seems to contain the origo position of the object, and not the centered position of the object.
+            this.ship.x = destination.x;
+            this.ship.y = destination.y;
+
+            /*
             this.shipTween = this.tweens.add({
                 targets: this.ship,
                 x: warpPosition.x,
                 y: warpPosition.y,
                 duration: instant ? 1 : tweenDuration
             });
+            */
         };
-
-        if (this.warp.isDown && time > this.lastWarp) {
-            this.engageWarp(150, true);
-            this.lastWarp = time + 1000;
-        }
 
         // Weapon text
         this.text.x = this.cameras.main.midPoint.x - 350;

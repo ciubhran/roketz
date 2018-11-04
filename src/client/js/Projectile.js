@@ -36,7 +36,7 @@ export default new Phaser.Class({
         }
 
         this.setPosition(projectileX, projectileY);
-        this.body.reset(projectileX, projectileY);
+        //this.body.reset(projectileX, projectileY);
         this.scaleX = projectileSettings.scale;
         this.scaleY = projectileSettings.scale;
         this.setAngle(ship.rotation);
@@ -64,16 +64,14 @@ export default new Phaser.Class({
             this.body.stop();
 
             if (this.type === Utils.ProjectileTypes.SMARTBOMB) {
-                this.scene.sound.add('explosion').play();
+                let explosion = this.scene.explosions.get();
 
-                // TODO: Figure out why the sound that SHOULD already be preloaded, takes time to start ...
-                setTimeout(() => {
-                    let explosion = this.scene.add.sprite(this.body.x, this.body.y, 'explosion');
-                    explosion.on('animationcomplete', (animation, frame) => {
-                        explosion.destroy();
-                    }, this);
-                    explosion.anims.play('explosion');
-                }, 25);
+                if (explosion) {
+                    explosion.explodeOn({
+                        x: this.x,
+                        y: this.y
+                    });
+                }
             }
         }
     }
