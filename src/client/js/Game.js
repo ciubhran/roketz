@@ -31,9 +31,6 @@ class Game extends React.Component {
                 preload: this.preloadAssets,
                 create: this.initGame,
                 update: this.updateGame
-            },
-            audio: {
-                disableWebAudio: true
             }
         };
 
@@ -61,6 +58,7 @@ class Game extends React.Component {
         });
 
         this.load.audio('battle', 'assets/audio/battle.mp3');
+        this.load.audio('explosion', 'assets/audio/explosion.mp3');
 
         this.load.on('progress', (progress) => {
             progressBar.clear();
