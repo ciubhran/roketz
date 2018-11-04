@@ -75,7 +75,7 @@ class Game extends React.Component {
 
             // Play background audio ... (Chrome will not start playing the sound until the user interacts with the canvas. Perhaps add a 'START' button after loading?)
             this.music = this.sound.add('battle');
-            // this.music.play({ loop: true });
+            this.music.play({ loop: true });
         });
     }
 
