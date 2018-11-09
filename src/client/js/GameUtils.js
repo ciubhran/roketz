@@ -3,7 +3,8 @@ export default class GameUtils {
         this.ProjectileTypes = {
             BULLET: 0x1,
             CHARGE: 0x2,
-            SMARTBOMB: 0x3
+            SMARTBOMB: 0x3,
+            LASER: 0x4
         };
 
         this.ShipTypes = {
@@ -76,6 +77,18 @@ export default class GameUtils {
             scale: 0.75,
             cooldown: 250,
             maxCharge: 0
+        });
+
+        weaponMap.set(this.ProjectileTypes.LASER, {
+            type: this.ProjectileTypes.LASER,
+            alpha: 1,
+            lifespan: 1250,
+            speed: 1000,
+            scale: 1,
+            cooldown: 500,
+            maxWidth: 50,
+            maxHeight: 4,
+            duration: 500
         });
 
         return weaponMap;

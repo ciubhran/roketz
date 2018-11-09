@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import GameUtils from './GameUtils.js';
 import Projectile from './Projectile.js';
 import Explosion from './Explosion.js';
+import EnergyBeam from './EnergyBeam.js';
 
 let Utils = new GameUtils();
 
@@ -17,7 +18,7 @@ class Game extends React.Component {
 
     componentDidMount() {
         var config = {
-            type: Phaser.AUTO,
+            type: Phaser.CANVAS, // CANVAS appears to be the least laggy options.
             width: 800,
             height: 600,
             parent: 'game-canvas',
@@ -32,7 +33,8 @@ class Game extends React.Component {
                 preload: this.preloadAssets,
                 create: this.initGame,
                 update: this.updateGame
-            }
+            },
+            verbose: false
         };
 
         this.game = new Phaser.Game(config);
@@ -49,11 +51,12 @@ class Game extends React.Component {
             progressBox = this.add.graphics();
 
         progressBox.fillStyle(0x222222, 0.8);
-        progressBox.fillRect(240, 270, 320, 50);
+        progressBox.fillRect((this.game.config.width - 320) / 2, (this.game.config.height - 50) / 2, 320, 50);
 
         this.load.image('ship', 'assets/ships/ship64.png');
         this.load.image('space', 'assets/galaxies/space.png');
         this.load.image('bullet', 'assets/projectiles/bullet.png');
+        this.load.image('beam', 'assets/beams/1.png');
         this.load.spritesheet('explosion', 'assets/explosions/1.png', {
             frameWidth: 128, frameHeight: 128, endFrame: 16
         });
@@ -64,7 +67,7 @@ class Game extends React.Component {
         this.load.on('progress', (progress) => {
             progressBar.clear();
             progressBar.fillStyle(0xffffff, 1);
-            progressBar.fillRect(250, 280, 300 * progress, 30);
+            progressBar.fillRect((this.game.config.width - 300) / 2, (this.game.config.height - 30) / 2, 300 * progress, 30);
         });
 
         this.load.on('complete', () => {
@@ -74,16 +77,22 @@ class Game extends React.Component {
 
             // Play background audio ... (Chrome will not start playing the sound until the user interacts with the canvas. Perhaps add a 'START' button after loading?)
             this.music = this.sound.add('battle');
-            this.music.play({ loop: true });
+            //this.music.play({ loop: true });
         });
     }
 
     initGame() {
-        this.space = this.add.image(this.game.config.width / 2, this.game.config.height / 2, 'space'); // Backgrounnd ...
+        this.space = this.add.image(512, 384, 'space'); // Backgrounnd ...
         this.weapons = Utils.getWeaponTypes(); // All data about weapon types ...
         this.ships = Utils.getShipTypes(); // All data about ship types ...
-        this.text = this.add.text(this.game.config.width / 2, this.game.config.height / 2, "test", {fixedToCamera: true, font: "18px Arial", fill: '#ffffff'}); // Temporary UI text for active weapon ...
         this.ship = this.physics.add.image(this.game.config.width / 2, this.game.config.height / 2, 'ship').setDepth(2); // The ship ...
+
+        this.fps = this.add.text(0, 0, "fps", {fixedToCamera: true, font: "14px Arial", fill: '#ffffff'}); // Temporary UI text for active weapon ...
+
+        if (this.game.config.verbose) {
+            this.activeWeapon = this.add.text(0, 0, "active_weapon", {fixedToCamera: true, font: "18px Arial", fill: '#ffffff'}); // Temporary UI text for active weapon ...
+            this.coordinates = this.add.text(0, 0, "coordinates", {fixedToCamera: true, font: "14px Arial", fill: '#ffffff'}); // Temporary UI text for active weapon ...
+        }
 
         // Physics group for projectiles ...
         this.projectiles = this.physics.add.group({
@@ -95,6 +104,12 @@ class Game extends React.Component {
         this.explosions = this.physics.add.group({
             classType: Explosion,
             maxSize: 1000,
+            runChildUpdate: true
+        });
+
+        this.beams = this.physics.add.group({
+            classType: EnergyBeam,
+            maxSize: 100,
             runChildUpdate: true
         });
 
@@ -169,12 +184,17 @@ class Game extends React.Component {
         if (!this.switchIsDown && this.switch.isDown) {
             this.accumulatedCharge = 0;
             this.switchIsDown = true;
-            this.shipWeaponType = (this.shipWeaponType === Utils.ProjectileTypes.BULLET) ?
-                Utils.ProjectileTypes.CHARGE : (this.shipWeaponType === Utils.ProjectileTypes.CHARGE) ?
-                Utils.ProjectileTypes.SMARTBOMB : Utils.ProjectileTypes.BULLET;
+            this.shipWeaponType++;
 
-            console.log('weapon swapped to: ' + (this.shipWeaponType === Utils.ProjectileTypes.BULLET ? 'BULLET' :
-                    this.shipWeaponType === Utils.ProjectileTypes.CHARGE ? 'CHARGE' : 'SMARTBOMB'));
+            if(this.shipWeaponType > this.weapons.size) {
+                this.shipWeaponType = 1;
+            }
+
+            console.log('weapon swapped to: ' +
+                (this.shipWeaponType === Utils.ProjectileTypes.BULLET ? 'BULLET' :
+                    this.shipWeaponType === Utils.ProjectileTypes.CHARGE ? 'CHARGE' :
+                        this.shipWeaponType === Utils.ProjectileTypes.LASER ? 'LASER' :
+                            'SMARTBOMB'));
 
         } else if(this.switch.isUp) {
             this.switchIsDown = false;
@@ -188,6 +208,19 @@ class Game extends React.Component {
             if (bomb) {
                 console.log('DROP!');
                 bomb.fire(this.ship, projectileSettings);
+
+                this.lastShot = time + projectileSettings.cooldown;
+            }
+        }
+
+        /* laser */
+        if (this.shipWeaponType === Utils.ProjectileTypes.LASER && this.fire.isDown && time > this.lastShot) {
+            let beam = this.beams.get(),
+                projectileSettings = this.weapons.get(this.shipWeaponType);
+
+            if (beam) {
+                console.log('ZAP!');
+                beam.fire(this.ship, projectileSettings);
 
                 this.lastShot = time + projectileSettings.cooldown;
             }
@@ -279,15 +312,29 @@ class Game extends React.Component {
             */
         };
 
-        // Weapon text
-        this.text.x = this.cameras.main.midPoint.x - 350;
-        this.text.y = this.cameras.main.midPoint.y + 250;
+        if (this.game.config.verbose) {
+            // Weapon text
+            this.activeWeapon.x = this.cameras.main.midPoint.x - 350;
+            this.activeWeapon.y = this.cameras.main.midPoint.y + 250;
 
-        this.text.setText('Weapon: ' + (this.shipWeaponType === Utils.ProjectileTypes.BULLET ? 'BULLET' :
-                this.shipWeaponType === Utils.ProjectileTypes.CHARGE ? 'CHARGE' : 'SMARTBOMB'));
+            this.activeWeapon.setText('Weapon: ' +
+                (this.shipWeaponType === Utils.ProjectileTypes.BULLET ? 'BULLET' :
+                    this.shipWeaponType === Utils.ProjectileTypes.CHARGE ? 'CHARGE' :
+                        this.shipWeaponType === Utils.ProjectileTypes.LASER ? 'LASER' :
+                            'SMARTBOMB'));
 
-        //this.space.tilePositionX += this.ship.body.deltaX() * 0.5;
-        //this.space.tilePositionY += this.ship.body.deltaY() * 0.5;
+
+            // Coordinates text
+            this.coordinates.x = this.cameras.main.midPoint.x + 300;
+            this.coordinates.y = this.cameras.main.midPoint.y + 250;
+
+            this.coordinates.setText("X: " + Math.round(this.ship.x) + "\nY: " + Math.round(this.ship.y));
+        }
+
+        this.fps.x = this.cameras.main.midPoint.x + 320;
+        this.fps.y = this.cameras.main.midPoint.y - 290;
+
+        this.fps.setText('FPS: ' + Math.round(this.game.loop.actualFps));
     }
 
     render() {

@@ -73,6 +73,8 @@ export default new Phaser.Class({
                     });
                 }
             }
+
+            this.destroy();
         }
     }
 });
